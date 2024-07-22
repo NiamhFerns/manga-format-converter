@@ -2,8 +2,7 @@
 Takes a set of CBZ files stored in volume format and converts them to a set of CBZ files in Vol. n Ch. m format where
 "n" is the Volume number and "m" is the chapter number.
 """
-
-import glob
+import argparse
 import os
 import re
 import sys
@@ -16,6 +15,20 @@ VOLUME_PATTERN = re.compile(".*(vol|v|vo|volume)\\d+.*\\.cbz", re.IGNORECASE)
 CHAPTER_PATTERN = re.compile("Vol. [1-9][0-9]* Ch. [1-9][0-9]*", re.IGNORECASE)
 PAGE_PATTERN = re.compile(".+(.jpeg|.jpg|.png)", re.IGNORECASE)
 CBZ_PATTERN = re.compile(".+\\.cbz", re.IGNORECASE)
+OUTPUT_DIR = "_output"
+
+parser = argparse.ArgumentParser(
+    prog="Manga Reformater",
+    description="A CLI application to reformat local manga into Vol. n Ch. m.cbz format.",
+    epilog="Text at the bottom of the help."
+)
+
+parser.add_argument("-d", "--directory", desc="Takes the root directory of your target manga.")
+parser.add_argument("-o", "--output", desc="Sets the name for the converted manga's output.")
+parser.add_argument("-c", "--chapter", desc="Takes a regex for finding a chapter number.")
+parser.add_argument("-v", "--volume", desc="Takes a regex for finding a volume.")
+parser.add_argument("-i", "--ignore", desc="Whether loose chapter files not included in a volume should be ignored.")
+parser.add_argument("-C" "--clean", desc="Whether to clean root directory of output directory and .tmp.zip")
 
 
 def start_progress(title):
@@ -87,27 +100,32 @@ def prepare_loose_chapters(volume, volume_path):
 def main():
     global TITLE
     base_directory = os.getcwd()
-    # shutil.rmtree(f"{base_directory}/_output")
-    # os.remove(f"{base_directory}/.tmp.zip")
-    TITLE = base_directory[base_directory.rfind("/") + 1 :]
+
+    # Clean old build files before running
+    if os.path.isdir(f"{base_directory}/{OUTPUT_DIR}"):
+        shutil.rmtree(f"{base_directory}/{OUTPUT_DIR}")
+    if os.path.isfile(f"{base_directory}/.tmp.zip"):
+        os.remove(f"{base_directory}/.tmp.zip")
+
+    TITLE = base_directory[base_directory.rfind("/") + 1:]
     if len(sys.argv) > 2:
         base_directory = sys.argv[1]
-    os.mkdir(f"{base_directory}/_output")
+    os.mkdir(f"{base_directory}/{OUTPUT_DIR}")
 
-    # volume_paths in this case refers to the original volume.cbz files
+    # Volume_paths in this case refers to the original volume.cbz files
     volume_paths = [path for path in os.listdir(base_directory) if re.match(VOLUME_PATTERN, path)]
     volumeless_chapter_paths = [path for path in os.listdir(base_directory) if not re.match(VOLUME_PATTERN, path)]
     volumeless_chapter_paths = list(filter(lambda x: re.match(CBZ_PATTERN, x), volumeless_chapter_paths))
 
-    start_progress(f"[RENAMING] Renaming loose chapters...")
     # Rename loose chapters that don't have a volume yet.
+    start_progress("[RENAMING] Renaming loose chapters...")
     for i, chapter in enumerate(volumeless_chapter_paths):
-        chapter_number = re.search("[1-9]{1}\\d*", chapter)
+        chapter_number = re.search("[1-9]\\d*", chapter)
         if chapter_number and chapter_number.group(0) is None:
             continue
         chapter_number = chapter_number.group(0)
 
-        shutil.copy2(f"{base_directory}/{chapter}", f"{base_directory}/_output/Ch. {chapter_number}.cbz")
+        shutil.copy2(f"{base_directory}/{chapter}", f"{base_directory}/{OUTPUT_DIR}/Ch. {chapter_number}.cbz")
         increment_progress(int(i / len(volumeless_chapter_paths) * 100))
     end_progress()
 
@@ -116,7 +134,7 @@ def main():
         # We want to copy those to a tmp zip file (to leave originals intact) then extract and cleanup the unneeded volume.zip file.
         # Extracted loose files are just named with the number of the volume.
         shutil.copy(volume_path, ".tmp.zip")
-        volume = re.search(r"v[0-9]{1,3}", volume_path[volume_path.rfind("/") + 1 :])
+        volume = re.search(r"v[0-9]{1,3}", volume_path[volume_path.rfind("/") + 1:])
         volume = int(volume.group(0)[1:])
 
         print(f"[EXTRACTING] {TITLE}{volume_path[volume_path.rfind("/"):]}")
